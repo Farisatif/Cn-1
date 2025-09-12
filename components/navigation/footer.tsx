@@ -1,11 +1,30 @@
 "use client"
-import { useState } from "react"
-import type React from "react"
 
-import { Link } from "react-router-dom"
-import { TrendingUp, Mail, Phone, MapPin, Facebook, Twitter, Linkedin, Instagram } from "lucide-react"
+import React, { useState } from "react"
+import Link from "next/link"
+import {
+  TrendingUp,
+  Mail,
+  Phone,
+  MapPin,
+  Facebook,
+  Twitter,
+  Linkedin,
+  Instagram,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+
+/**
+ * Footer (Next.js) - Reworked to remove react-router usage and include
+ * the same professional touches added to Header/Home:
+ *  - Next.js Link (href) instead of react-router `to`
+ *  - Accessible subscription flow with validation & live region
+ *  - External social links open in new tab (noopener)
+ *  - Small UX polish (success / error state, timeout to reset)
+ *
+ * Paste into: components/navigation/footer.tsx
+ */
 
 export function Footer() {
   const [email, setEmail] = useState("")
@@ -22,21 +41,51 @@ export function Footer() {
       setStatus("error")
       return
     }
+
     setStatus("loading")
     try {
+      // simulate small delay to show loading state
+      await new Promise((r) => setTimeout(r, 450))
+
       const existing = JSON.parse(localStorage.getItem("subscribers") || "[]")
-      if (!existing.includes(email.trim())) {
-        existing.push(email.trim())
+      const cleaned = email.trim().toLowerCase()
+      if (!existing.includes(cleaned)) {
+        existing.push(cleaned)
         localStorage.setItem("subscribers", JSON.stringify(existing))
       }
+
       setStatus("success")
       setEmail("")
-      setTimeout(() => setStatus("idle"), 3000)
+      // reset to idle after a short confirmation
+      setTimeout(() => setStatus("idle"), 3500)
     } catch {
       setErrorMessage("Subscription failed. Try again.")
       setStatus("error")
     }
   }
+
+  const socialLinks = [
+    { Icon: Facebook, href: "https://facebook.com/nextstepnavigator", label: "Facebook" },
+    { Icon: Twitter, href: "https://twitter.com/nextstepnav", label: "Twitter" },
+    { Icon: Linkedin, href: "https://linkedin.com/company/nextstep-navigator", label: "LinkedIn" },
+    { Icon: Instagram, href: "https://instagram.com/nextstepnavigator", label: "Instagram" },
+  ]
+
+  const quickLinks = [
+    { href: "/career-bank", label: "Career Bank" },
+    { href: "/quiz", label: "Interest Quiz" },
+    { href: "/multimedia", label: "Multimedia Guidance" },
+    { href: "/stories", label: "Success Stories" },
+    { href: "/resources", label: "Resource Library" },
+  ]
+
+  const supportLinks = [
+    { href: "/contact", label: "Contact Us" },
+    { href: "/about", label: "About Us" },
+    { href: "/privacy", label: "Privacy Policy" },
+    { href: "/terms", label: "Terms of Service" },
+    { href: "/help", label: "Help Center" },
+  ]
 
   return (
     <footer
@@ -59,35 +108,30 @@ export function Footer() {
               >
                 <TrendingUp className="h-5 w-5" style={{ color: "var(--accent-foreground)" }} />
               </div>
+
               <span className="font-heading font-bold text-xl" id="footer-heading">
                 NextStep Navigator
               </span>
             </div>
+
             <p className="text-sm leading-relaxed" style={{ color: "var(--muted-foreground)" }}>
               Empowering students, graduates, and professionals to discover their perfect career path through
               personalized guidance and comprehensive resources.
             </p>
 
             <div className="flex space-x-2" role="navigation" aria-label="social links">
-              {[
-                { Icon: Facebook, href: "https://facebook.com/nextstepnavigator" },
-                { Icon: Twitter, href: "https://twitter.com/nextstepnav" },
-                { Icon: Linkedin, href: "https://linkedin.com/company/nextstep-navigator" },
-                { Icon: Instagram, href: "https://instagram.com/nextstepnavigator" },
-              ].map(({ Icon, href }, idx) => (
-                <Button
+              {socialLinks.map(({ Icon, href, label }, idx) => (
+                <a
                   key={idx}
-                  className="p-2"
-                  size="sm"
-                  style={{
-                    background: "var(--accent)",
-                    color: "var(--accent-foreground)",
-                  }}
-                  onClick={() => window.open(href, "_blank")}
-                  aria-label={`Visit our ${Icon.name} page`}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Visit our ${label} page`}
+                  className="inline-flex items-center justify-center rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-offset-1"
+                  style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
                 >
                   <Icon className="h-4 w-4" />
-                </Button>
+                </a>
               ))}
             </div>
           </div>
@@ -97,18 +141,13 @@ export function Footer() {
             <h3 className="font-heading font-semibold" style={{ color: "var(--accent)" }}>
               Quick Links
             </h3>
+
             <nav className="space-y-2 text-sm" aria-label="quick links">
-              {[
-                { href: "/career-bank", label: "Career Bank" },
-                { href: "/quiz", label: "Interest Quiz" },
-                { href: "/multimedia", label: "Multimedia Guidance" },
-                { href: "/stories", label: "Success Stories" },
-                { href: "/resources", label: "Resource Library" },
-              ].map((link, idx) => (
-                <Link key={idx} to={link.href} className="block">
+              {quickLinks.map((link, idx) => (
+                <Link key={idx} href={link.href} className="block">
                   <span
                     style={{ color: "var(--muted-foreground)" }}
-                    className="hover:text-var(--foreground) transition-colors"
+                    className="transition-colors hover:text-[var(--foreground)]"
                   >
                     {link.label}
                   </span>
@@ -122,18 +161,13 @@ export function Footer() {
             <h3 className="font-heading font-semibold" style={{ color: "var(--accent)" }}>
               Support
             </h3>
+
             <div className="space-y-2 text-sm">
-              {[
-                { href: "/contact", label: "Contact Us" },
-                { href: "/about", label: "About Us" },
-                { href: "/privacy", label: "Privacy Policy" },
-                { href: "/terms", label: "Terms of Service" },
-                { href: "/help", label: "Help Center" },
-              ].map((link, idx) => (
-                <Link key={idx} to={link.href} className="block">
+              {supportLinks.map((link, idx) => (
+                <Link key={idx} href={link.href} className="block">
                   <span
                     style={{ color: "var(--muted-foreground)" }}
-                    className="hover:text-var(--foreground) transition-colors"
+                    className="transition-colors hover:text-[var(--foreground)]"
                   >
                     {link.label}
                   </span>
@@ -147,6 +181,7 @@ export function Footer() {
             <h3 className="font-heading font-semibold" style={{ color: "var(--accent)" }}>
               Get in Touch
             </h3>
+
             <div className="space-y-3 text-sm" style={{ color: "var(--muted-foreground)" }}>
               <div className="flex items-center space-x-2">
                 <Mail className="h-4 w-4" />
@@ -204,16 +239,19 @@ export function Footer() {
                 </Button>
               </form>
 
-              {status === "success" && (
-                <div className="text-sm text-green-500" role="status">
-                  Thanks — you’re subscribed!
-                </div>
-              )}
-              {status === "error" && errorMessage && (
-                <div className="text-sm text-red-500" role="alert">
-                  {errorMessage}
-                </div>
-              )}
+              {/* Live region for screen readers */}
+              <div aria-live="polite" aria-atomic="true" className="mt-1 min-h-[1.25rem]">
+                {status === "success" && (
+                  <div className="text-sm text-green-500" role="status">
+                    Thanks — you’re subscribed!
+                  </div>
+                )}
+                {status === "error" && errorMessage && (
+                  <div className="text-sm text-red-500" role="alert">
+                    {errorMessage}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

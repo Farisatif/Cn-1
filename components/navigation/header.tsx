@@ -1,13 +1,10 @@
 "use client"
 
 import { Input } from "@/components/ui/input"
-
 import { Label } from "@/components/ui/label"
-
 import type React from "react"
-
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -104,8 +101,12 @@ const navigationItems: NavigationItem[] = [
   },
 ]
 
+/* -------------------------
+   safe localStorage helpers (SSR-safe)
+   ------------------------- */
 const safeLocalGet = <T,>(key: string, fallback: T): T => {
   try {
+    if (typeof window === "undefined") return fallback
     const raw = localStorage.getItem(key)
     return raw ? (JSON.parse(raw) as T) : fallback
   } catch {
@@ -115,6 +116,7 @@ const safeLocalGet = <T,>(key: string, fallback: T): T => {
 
 const safeLocalSet = (key: string, value: any) => {
   try {
+    if (typeof window === "undefined") return
     localStorage.setItem(key, JSON.stringify(value))
   } catch {
     // ignore
@@ -129,44 +131,51 @@ const LS_KEYS = {
   AUTH: "ns_auth_v1",
 }
 
+/* -------------------------
+   Header component
+   ------------------------- */
 export function Header() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const pathname = location?.pathname || "/"
+
   const [userName, setUserName] = useState("")
   const [userType, setUserType] = useState("")
   const [currentTime, setCurrentTime] = useState("")
-  const [location, setLocation] = useState("")
+  const [locationLabel, setLocationLabel] = useState("")
   const [visitorCount, setVisitorCount] = useState(0)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [authMode, setAuthMode] = useState<"login" | "signup">("login")
   const [darkMode, setDarkMode] = useState<boolean>(() => safeLocalGet<boolean>(LS_KEYS.THEME, false))
-  const [notifications, setNotifications] = useState<{ id: string; text: string; read: boolean }[]>(() =>
-    safeLocalGet(LS_KEYS.NOTIFS, [
-      { id: "n1", text: "New career added: Data Strategist", read: false },
-      { id: "n2", text: "Your quiz results are ready", read: false },
-    ]),
+  const [notifications, setNotifications] = useState<{ id: string; text: string; read: boolean }[]>(
+    () =>
+      safeLocalGet<{ id: string; text: string; read: boolean }[]>(LS_KEYS.NOTIFS, [
+        { id: "n1", text: "New career added: Data Strategist", read: false },
+        { id: "n2", text: "Your quiz results are ready", read: false },
+      ]),
   )
 
   const [searchTerm, setSearchTerm] = useState("")
   const [showNotifications, setShowNotifications] = useState(false)
   const searchRef = useRef<HTMLInputElement | null>(null)
-  const { pathname } = useLocation()
 
   useEffect(() => {
+    // apply theme class and persist (SSR-safe)
     try {
-      if (darkMode) {
-        document.documentElement.classList.add("dark")
-        safeLocalSet(LS_KEYS.THEME, true)
-      } else {
-        document.documentElement.classList.remove("dark")
-        safeLocalSet(LS_KEYS.THEME, false)
+      if (typeof document !== "undefined") {
+        if (darkMode) document.documentElement.classList.add("dark")
+        else document.documentElement.classList.remove("dark")
       }
+      safeLocalSet(LS_KEYS.THEME, darkMode)
     } catch {
-      // SSR safety noop
+      // noop
     }
   }, [darkMode])
 
   useEffect(() => {
+    if (typeof window === "undefined") return
     const storedUserName = localStorage.getItem("userName")
     const storedUserType = localStorage.getItem("userType")
     const authToken = localStorage.getItem(LS_KEYS.AUTH)
@@ -187,11 +196,13 @@ export function Header() {
   }, [])
 
   useEffect(() => {
-    if (navigator.geolocation) {
+    if (typeof navigator !== "undefined" && "geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
-        () => setLocation("Your Location"),
-        () => setLocation("Location unavailable"),
+        () => setLocationLabel("Your Location"),
+        () => setLocationLabel("Location unavailable"),
       )
+    } else {
+      setLocationLabel("Geolocation not supported")
     }
   }, [])
 
@@ -204,8 +215,14 @@ export function Header() {
   }, [])
 
   useEffect(() => {
+    // persist notifications if they change
+    safeLocalSet(LS_KEYS.NOTIFS, notifications)
+  }, [notifications])
+
+  useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA") return
+      const targetTag = (e.target as HTMLElement)?.tagName
+      if (targetTag === "INPUT" || targetTag === "TEXTAREA") return
       if (e.key === "/" && !e.ctrlKey && !e.metaKey) {
         e.preventDefault()
         searchRef.current?.focus()
@@ -224,13 +241,14 @@ export function Header() {
     const users = safeLocalGet<any[]>(LS_KEYS.USERS, [])
     const user = users.find((u) => u.email === email && u.password === password)
     if (user) {
-      localStorage.setItem(LS_KEYS.AUTH, "token_simulated")
-      localStorage.setItem("userName", user.name)
-      localStorage.setItem("userType", user.userType)
+      safeLocalSet(LS_KEYS.AUTH, "token_simulated")
+      safeLocalSet("userName", user.name)
+      safeLocalSet("userType", user.userType)
       setUserName(user.name)
       setUserType(user.userType)
       setIsAuthenticated(true)
       setShowAuthModal(false)
+      navigate("/dashboard")
       return { success: true }
     } else {
       return { success: false, error: "Invalid email or password" }
@@ -248,23 +266,29 @@ export function Header() {
     const newUser = { id: Date.now(), name, email, password, userType: uType }
     users.push(newUser)
     safeLocalSet(LS_KEYS.USERS, users)
-    localStorage.setItem(LS_KEYS.AUTH, "token_simulated")
-    localStorage.setItem("userName", name)
-    localStorage.setItem("userType", uType)
+    safeLocalSet(LS_KEYS.AUTH, "token_simulated")
+    safeLocalSet("userName", name)
+    safeLocalSet("userType", uType)
     setUserName(name)
     setUserType(uType)
     setIsAuthenticated(true)
     setShowAuthModal(false)
+    navigate("/dashboard")
     return { success: true }
   }
 
   const handleLogout = () => {
-    localStorage.removeItem(LS_KEYS.AUTH)
-    localStorage.removeItem("userName")
-    localStorage.removeItem("userType")
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(LS_KEYS.AUTH)
+        localStorage.removeItem("userName")
+        localStorage.removeItem("userType")
+      }
+    } catch {}
     setUserName("")
     setUserType("")
     setIsAuthenticated(false)
+    navigate("/")
   }
 
   const markNotificationRead = (id: string) => {
@@ -305,8 +329,8 @@ export function Header() {
     ])
 
   const onSearchSelect = (href: string) => {
-    window.location.href = href
     setSearchTerm("")
+    navigate(href)
   }
 
   const unreadCount = notifications.filter((n) => !n.read).length
@@ -324,7 +348,7 @@ export function Header() {
 
               <div className="flex items-center space-x-2" aria-hidden>
                 <MapPin className="h-3 w-3 text-primary" />
-                <span className="hidden lg:inline text-muted-foreground">{location}</span>
+                <span className="hidden lg:inline text-muted-foreground">{locationLabel}</span>
               </div>
             </div>
 
@@ -343,7 +367,7 @@ export function Header() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setShowNotifications(!showNotifications)}
+                  onClick={() => setShowNotifications((s) => !s)}
                   className="p-2 h-auto relative"
                   aria-label={`${unreadCount} unread notifications`}
                 >
@@ -364,20 +388,16 @@ export function Header() {
                       </Button>
                     </div>
                     <div className="space-y-2 max-h-60 overflow-y-auto">
+                      {notifications.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No notifications</p>}
                       {notifications.map((notif) => (
                         <div
                           key={notif.id}
-                          className={`p-2 rounded text-sm cursor-pointer transition-colors ${
-                            notif.read ? "text-muted-foreground" : "bg-primary/5 text-foreground"
-                          }`}
+                          className={`p-2 rounded text-sm cursor-pointer transition-colors ${notif.read ? "text-muted-foreground" : "bg-primary/5 text-foreground"}`}
                           onClick={() => markNotificationRead(notif.id)}
                         >
                           {notif.text}
                         </div>
                       ))}
-                      {notifications.length === 0 && (
-                        <p className="text-sm text-muted-foreground text-center py-4">No notifications</p>
-                      )}
                     </div>
                   </div>
                 )}
@@ -405,19 +425,19 @@ export function Header() {
 
             <div className="flex-1 mx-6 hidden lg:flex items-center gap-6">
               <div className="relative w-1/2">
-                <label htmlFor="global-search" className="sr-only">
+                <Label htmlFor="global-search" className="sr-only">
                   Search the site
-                </label>
-                <input
+                </Label>
+                <Input
                   id="global-search"
                   ref={searchRef}
                   placeholder="Search (press /) — e.g. Interest Quiz"
-                  className="w-full rounded-lg py-2 px-4 border border-border bg-background text-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 transition-colors"
+                  className="w-full"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && searchTerm.trim()) {
-                      window.location.href = `/career-bank?search=${encodeURIComponent(searchTerm.trim())}`
+                      navigate(`/career-bank?search=${encodeURIComponent(searchTerm.trim())}`)
                       setSearchTerm("")
                     }
                   }}
@@ -430,16 +450,14 @@ export function Header() {
                         .slice(0, 6)
                         .map((s) => (
                           <li key={s.href}>
-                            <button
-                              onClick={() => onSearchSelect(s.href)}
-                              className="w-full text-left p-3 rounded-md hover:bg-muted transition-colors"
-                            >
+                            <button onClick={() => onSearchSelect(s.href)} className="w-full text-left p-3 rounded-md hover:bg-muted transition-colors">
                               {s.label}
                             </button>
                           </li>
                         ))}
-                      {searchSuggestions.filter((s) => s.label.toLowerCase().includes(searchTerm.toLowerCase()))
-                        .length === 0 && <li className="p-3 text-sm text-muted-foreground">No suggestions found</li>}
+                      {searchSuggestions.filter((s) => s.label.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
+                        <li className="p-3 text-sm text-muted-foreground">No suggestions found</li>
+                      )}
                     </ul>
                   </div>
                 )}
@@ -492,11 +510,7 @@ export function Header() {
                           { href: "/contact", icon: Phone, title: "Contact Us", desc: "Get in touch with our team" },
                           { href: "/about", icon: Info, title: "About Us", desc: "Learn about our mission" },
                         ].map((link) => (
-                          <Link
-                            key={link.href}
-                            to={link.href}
-                            className="flex items-center space-x-3 p-3 rounded-lg hover:bg-muted transition-colors"
-                          >
+                          <Link key={link.href} to={link.href} className="flex items-center space-x-3 p-3 rounded-lg hover:bg-muted transition-colors">
                             <link.icon className="h-5 w-5 text-primary" />
                             <div>
                               <div className="font-medium">{link.title}</div>
@@ -512,13 +526,7 @@ export function Header() {
             </div>
 
             <div className="flex items-center space-x-2 sm:space-x-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setDarkMode((d) => !d)}
-                className="p-2 h-auto"
-                aria-label="Toggle theme"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setDarkMode((d) => !d)} className="p-2 h-auto" aria-label="Toggle theme">
                 {darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </Button>
 
@@ -574,7 +582,7 @@ export function Header() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                onClick={() => setIsMobileMenuOpen((s) => !s)}
                 className="p-2 h-auto lg:hidden"
                 aria-label="Toggle mobile menu"
               >
@@ -585,22 +593,12 @@ export function Header() {
         </div>
 
         {isMobileMenuOpen && (
-          <nav
-            className="lg:hidden border-t border-border bg-background/95 backdrop-blur-sm"
-            aria-label="Mobile navigation"
-          >
+          <nav className="lg:hidden border-t border-border bg-background/95 backdrop-blur-sm" aria-label="Mobile navigation">
             <div className="container mx-auto px-4 py-4 space-y-3">
-              {/* Mobile search */}
               <div className="relative">
-                <input
-                  placeholder="Search careers, skills..."
-                  className="w-full rounded-lg py-3 px-4 border border-border bg-background text-foreground"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+                <Input placeholder="Search careers, skills..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
               </div>
 
-              {/* Navigation items */}
               {getFilteredNavItems().map((item) => (
                 <Link
                   key={item.href}
@@ -618,7 +616,6 @@ export function Header() {
                 </Link>
               ))}
 
-              {/* Auth buttons for mobile */}
               {!isAuthenticated && (
                 <div className="flex gap-3 pt-3 border-t border-border">
                   <Button
@@ -662,19 +659,15 @@ export function Header() {
       )}
 
       {showAuthModal && (
-        <AuthModal
-          mode={authMode}
-          setAuthMode={setAuthMode}
-          onClose={() => setShowAuthModal(false)}
-          onLogin={handleLogin}
-          onSignup={handleSignup}
-        />
+        <AuthModal mode={authMode} setAuthMode={setAuthMode} onClose={() => setShowAuthModal(false)} onLogin={handleLogin} onSignup={handleSignup} />
       )}
     </>
   )
 }
 
-/* Enhanced Auth Modal with better UX and validation */
+/* -------------------------
+   Auth Modal (same as before, unchanged API)
+   ------------------------- */
 function AuthModal({
   mode,
   setAuthMode,
@@ -726,7 +719,6 @@ function AuthModal({
     setIsLoading(true)
     setError(null)
 
-    // Simulate API delay
     await new Promise((resolve) => setTimeout(resolve, 500))
 
     try {
@@ -740,7 +732,7 @@ function AuthModal({
       if (!result.success && result.error) {
         setError(result.error)
       }
-    } catch (err) {
+    } catch {
       setError("An unexpected error occurred. Please try again.")
     } finally {
       setIsLoading(false)
@@ -748,39 +740,23 @@ function AuthModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
       <div className="w-full max-w-md rounded-xl p-6 bg-popover border border-border shadow-2xl">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-heading font-bold">
-            {mode === "login" ? "Welcome back" : "Create your account"}
-          </h2>
+          <h2 className="text-2xl font-heading font-bold">{mode === "login" ? "Welcome back" : "Create your account"}</h2>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close" className="p-2 h-auto">
             <X className="h-4 w-4" />
           </Button>
         </div>
 
-        {/* OAuth placeholders */}
         <div className="grid grid-cols-2 gap-3 mb-6">
-          <Button
-            variant="outline"
-            onClick={() => alert("GitHub OAuth integration coming soon! For now, use the demo login below.")}
-            className="flex items-center justify-center gap-2"
-          >
+          <Button variant="outline" onClick={() => alert("GitHub OAuth integration coming soon!")} className="flex items-center justify-center gap-2">
             <Github className="h-4 w-4" /> GitHub
           </Button>
           <Button
             variant="outline"
             onClick={() => {
-              setFormData({
-                name: "Demo User",
-                email: "demo@nextstep.com",
-                password: "demo123",
-                userType: "student",
-              })
+              setFormData({ name: "Demo User", email: "demo@nextstep.com", password: "demo123", userType: "student" })
               alert("Demo credentials filled! Click 'Sign in' to continue.")
             }}
             className="flex items-center justify-center gap-2"
@@ -802,46 +778,20 @@ function AuthModal({
           {mode === "signup" && (
             <div className="space-y-2">
               <Label className="text-sm font-medium">Full name</Label>
-              <Input
-                required
-                className="h-11"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Enter your full name"
-              />
+              <Input required className="h-11" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Enter your full name" />
             </div>
           )}
 
           <div className="space-y-2">
             <Label className="text-sm font-medium">Email</Label>
-            <Input
-              required
-              type="email"
-              className="h-11"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              placeholder="Enter your email"
-            />
+            <Input required type="email" className="h-11" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="Enter your email" />
           </div>
 
           <div className="space-y-2">
             <Label className="text-sm font-medium">Password</Label>
             <div className="relative">
-              <Input
-                required
-                type={showPassword ? "text" : "password"}
-                className="h-11 pr-10"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Enter your password"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 h-auto"
-              >
+              <Input required type={showPassword ? "text" : "password"} className="h-11 pr-10" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} placeholder="Enter your password" />
+              <Button type="button" variant="ghost" size="sm" onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 h-auto">
                 {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </Button>
             </div>
@@ -851,11 +801,7 @@ function AuthModal({
           {mode === "signup" && (
             <div className="space-y-2">
               <Label className="text-sm font-medium">I am a</Label>
-              <select
-                className="w-full h-11 px-3 rounded-md border border-border bg-background"
-                value={formData.userType}
-                onChange={(e) => setFormData({ ...formData, userType: e.target.value })}
-              >
+              <select className="w-full h-11 px-3 rounded-md border border-border bg-background" value={formData.userType} onChange={(e) => setFormData({ ...formData, userType: e.target.value })}>
                 <option value="student">Student</option>
                 <option value="graduate">Graduate</option>
                 <option value="professional">Professional</option>
@@ -874,27 +820,15 @@ function AuthModal({
           </Button>
 
           <div className="text-center">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setAuthMode?.(mode === "login" ? "signup" : "login")}
-              className="text-sm"
-            >
+            <Button type="button" variant="ghost" onClick={() => setAuthMode?.(mode === "login" ? "signup" : "login")} className="text-sm">
               {mode === "login" ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
             </Button>
           </div>
         </form>
 
         <p className="mt-4 text-xs text-muted-foreground text-center">
-          By continuing, you agree to our{" "}
-          <Link to="/terms" className="underline">
-            Terms
-          </Link>{" "}
-          and{" "}
-          <Link to="/privacy" className="underline">
-            Privacy Policy
-          </Link>
-          .
+          By continuing, you agree to our <Link to="/terms" className="underline">Terms</Link> and{" "}
+          <Link to="/privacy" className="underline">Privacy Policy</Link>.
         </p>
       </div>
     </div>

@@ -1,7 +1,6 @@
 "use client"
 
-import { useLocation } from "react-router-dom"
-import { Link } from "react-router-dom"
+import { usePathname, useRouter } from "next/navigation"
 import { ChevronRight, Home } from "lucide-react"
 import {
   Breadcrumb,
@@ -26,10 +25,15 @@ const routeLabels: Record<string, string> = {
 }
 
 export function BreadcrumbNav() {
-  const { pathname } = useLocation()
+  const pathname = usePathname() || "/"
+  const router = useRouter()
   const pathSegments = pathname.split("/").filter(Boolean)
 
   if (pathname === "/") return null
+
+  const handleClick = (href: string) => {
+    router.push(href)
+  }
 
   return (
     <div
@@ -43,20 +47,21 @@ export function BreadcrumbNav() {
         <BreadcrumbList className="flex items-center space-x-1 font-body text-sm">
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link
-                to="/"
+              <button
+                onClick={() => handleClick("/")}
                 className="flex items-center space-x-1 transition-transform duration-200 hover:scale-105 text-[var(--color-foreground)] hover:text-[var(--color-primary)]"
               >
                 <Home className="h-4 w-4" />
                 <span className="font-medium">Home</span>
-              </Link>
+              </button>
             </BreadcrumbLink>
           </BreadcrumbItem>
 
           {pathSegments.map((segment, index) => {
             const href = "/" + pathSegments.slice(0, index + 1).join("/")
             const isLast = index === pathSegments.length - 1
-            const label = routeLabels[segment] || segment.charAt(0).toUpperCase() + segment.slice(1)
+            const label =
+              routeLabels[segment] || segment.charAt(0).toUpperCase() + segment.slice(1)
 
             return (
               <div key={segment} className="flex items-center space-x-1">
@@ -70,12 +75,12 @@ export function BreadcrumbNav() {
                     </BreadcrumbPage>
                   ) : (
                     <BreadcrumbLink asChild>
-                      <Link
-                        to={href}
+                      <button
+                        onClick={() => handleClick(href)}
                         className="transition-transform duration-200 hover:scale-105 text-[var(--color-foreground)] hover:text-[var(--color-primary)] hover:underline"
                       >
                         {label}
-                      </Link>
+                      </button>
                     </BreadcrumbLink>
                   )}
                 </BreadcrumbItem>
